@@ -1,0 +1,5 @@
+#!/bin/bash
+# xuhliar00
+# 29.02.2024
+export POSIXLY_CORRECT=yes
+export LC_ALL=C
