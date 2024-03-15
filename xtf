@@ -4,6 +4,12 @@
 export POSIXLY_CORRECT=yes
 export LC_ALL=C
 
+
+FILTER=""
+COMMAND=""
+USER=""
+LOGS=()
+
 help(){
     echo "xtf - skript pro předzpracování logů z Vaší kryptoměnové burzy."
     echo "POUŽITÍ"
@@ -52,10 +58,6 @@ validate_logs() {
     ' "$logfile"
 }
 
-FILTER=""
-COMMAND=""
-USER=""
-LOGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
@@ -99,13 +101,13 @@ fi
 
 if [ -z "$COMMAND" ] || [ -z "$USER" ] || [ ${#LOGS[@]} -eq 0 ]; then
     echo "Error: Missing required arguments"
-    usage
+    help
     exit 1
 fi
 
 for log in "${LOGS[@]}"; do
     if [[ "$log" == *.gz ]]; then
-        zcat "$log" | validate_logs
+        gzip -d -c "$log" | validate_logs
     else
         validate_logs "$log"
     fi
@@ -118,3 +120,23 @@ echo "Logs:"
 for log in "${LOGS[@]}"; do
     echo "$log"
 done
+
+if [ "$COMMAND" = "list" ]; then
+    for log in "${LOGS[@]}"; do
+        if [[ "$log" == *.gz ]]; then
+            gzip -d -c "$log" | awk -F ';' -v user="$USER" '$1 == user'
+        else
+            awk -F ';' -v user="$USER" '$1 == user' "$log"
+        fi
+    done
+fi
+
+if [ "$COMMAND" = "list-currency" ]; then
+    for log in "${LOGS[@]}"; do
+        if [[ "$log" == *.gz ]]; then
+            gzip -d -c "$log" | awk -F ';' -v user="$USER" '$1 == user {print $3}' | sort -u
+        else
+            awk -F ';' -v user="$USER" '$1 == user {print $3}' "$log" | sort -u
+        fi
+    done
+fi
