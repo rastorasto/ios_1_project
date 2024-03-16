@@ -31,7 +31,7 @@ validate_logs() {
     local logfile="$1"
     awk -F ';' '
         BEGIN {
-            RS = "\n"   # Set record separator to newline
+            RS = "\n"
         }
         {
             if (NF % 4 != 0) {
@@ -68,10 +68,18 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -a)
+            if [ -n "$DATE_AFTER" ]; then
+                echo "Error: Duplicate option -a" >&2
+                exit 1
+            fi
             DATE_AFTER="$2"
             shift
             ;;
         -b)
+            if [ -n "$DATE_BEFORE" ]; then
+                echo "Error: Duplicate option -b" >&2
+                exit 1
+            fi
             DATE_BEFORE="$2"
             shift
             ;;
@@ -80,6 +88,10 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         list|list-currency|status|profit)
+            if [ -n "$COMMAND" ]; then
+                echo "Error: Duplicate command" >&2
+                exit 1
+            fi
             COMMAND=$1
             ;;
         -*)
@@ -103,8 +115,7 @@ if [ -z "$COMMAND" ] && [ -n "$USER" ] && [ ${#LOGS[@]} -gt 0 ]; then
 fi
 
 if [ -z "$COMMAND" ] || [ -z "$USER" ] || [ ${#LOGS[@]} -eq 0 ]; then
-    # echo "Error: Missing required arguments"
-    # help
+    echo "Error: Missing required arguments" >&2
     exit 1
 fi
 
@@ -174,3 +185,36 @@ if [ "$COMMAND" = "status" ]; then
         fi
     done
 fi | sort -t ':' -k 1
+
+if [ "$COMMAND" = "profit" ]; then
+    if [ -z "$XTF_PROFIT" ]; then
+        PROFIT_PERCENTAGE=20
+    else
+        PROFIT_PERCENTAGE=$XTF_PROFIT
+    fi
+
+    for log in "${LOGS[@]}"; do
+        if [[ "$log" == *.gz ]]; then
+            gzip -d -c "$log" | awk -F ';' -v user="$USER" -v profit="$PROFIT_PERCENTAGE" '
+                BEGIN { PROCINFO["sorted_in"] = "@ind_str_asc" }
+                $1 == user { 
+                    if ($4 > 0) {
+                        $4 *= (1 + profit / 100)
+                    }
+                    balance[$3] += $4
+                }
+                END { for (currency in balance) printf "%s : %.4f\n", currency, balance[currency] }
+            '
+        else
+            awk -F ';' -v user="$USER" -v profit="$PROFIT_PERCENTAGE" '
+                $1 == user { 
+                    if ($4 > 0) {
+                        $4 *= (1 + profit / 100)
+                    }
+                    balance[$3] += $4
+                }
+                END { for (currency in balance) printf "%s : %.4f\n", currency, balance[currency] }
+            ' "$log"
+        fi
+    done | sort -t ':' -k 1
+fi
