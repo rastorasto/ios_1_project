@@ -4,8 +4,9 @@
 export POSIXLY_CORRECT=yes
 export LC_ALL=C
 
-
-FILTER=""
+DATE_AFTER=""
+DATE_BEFORE=""
+CURRENCY=()
 COMMAND=""
 USER=""
 LOGS=()
@@ -107,15 +108,15 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -a)
-            FILTER+="after $2 "
+            DATE_AFTER+="$2"
             shift
             ;;
         -b)
-            FILTER+="before $2 "
+            DATE_BEFORE+="$2"
             shift
             ;;
         -c)
-            FILTER+="currency $2 "
+            CURRENCY+=("$2")
             shift
             ;;
         list|list-currency|status|profit)
@@ -157,18 +158,21 @@ done
 
 # echo "Command: $COMMAND"
 # echo "Filter: $FILTER"
+# echo "Currency: $CURRENCY"
+# echo "Date after: $DATE_AFTER"
+# echo "Date before: $DATE_BEFORE"
 # echo "User: $USER"
 # echo "Logs:"
-# for log in "${LOGS[@]}"; do
+# for log in "${LOGS[@]}"; do 
 #     echo "$log"
 # done
 
 if [ "$COMMAND" = "list" ]; then
     for log in "${LOGS[@]}"; do
         if [[ "$log" == *.gz ]]; then
-            gzip -d -c "$log" | awk -F ';' -v user="$USER" '$1 == user'
+            gzip -d -c "$log" | awk -F ';' -v user="$USER" -v currency="$CURRENCY" '$1 == user && (currency == "" || $3 == currency)'
         else
-            awk -F ';' -v user="$USER" '$1 == user' "$log"
+            awk -F ';' -v user="$USER" -v currency="$CURRENCY" '$1 == user && (currency == "" || $3 == currency)' "$log"
         fi
     done
 fi
