@@ -6,7 +6,7 @@ export LC_ALL=C
 
 DATE_AFTER=""
 DATE_BEFORE=""
-CURRENCY=()
+CURRENCY=""
 COMMAND=""
 USER=""
 LOGS=()
@@ -34,72 +34,32 @@ validate_logs() {
             RS = "\n"   # Set record separator to newline
         }
         {
-            # Check the number of fields in each record
             if (NF % 4 != 0) {
-                print "Error invalid format count: " $0
-                exit
+                #print "Error invalid format count: " $0
+                exit 1 
             }
-
-            # Loop through each record and validate its fields
             for (i = 1; i <= NF; i += 4) {
                 # Validate USER NAME
                 if (!($i ~ /^[[:print:]]+$/)) {
-                    print "Error invalid format whitespace: " $0
-                    exit
+                    #print "Error invalid format whitespace: " $0
+                    exit 1 
                 }
-
-                # Validate DATE AND TIME
                 if ($(i + 1) !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                    print "Error invalid format date: " $0
-                    exit
+                    #print "Error invalid format date: " $0
+                    exit 1 
                 }
-
-                # Validate CURRENCY
                 if ($(i + 2) !~ /^[A-Z]{3}$/) {
-                    print "Error invalid format currency: " $0
-                    exit
+                    #print "Error invalid format currency: " $0
+                    exit 1 
                 }
-
-                # Validate VALUE
                 if ($(i + 3) !~ /^(-?[0-9]+(\.[0-9]{1,4})?)$/) {
-                    print "Error invalid format amount: " $0
-                    exit
+                    #print "Error invalid format amount: " $0
+                    exit 1 
                 }
             }
         }
     ' "$logfile"
 }
-# validate_logs() {
-#     local logfile="$1"
-#     awk -F ';' '
-#         {
-#             if (NF != 4) {
-#                 print "Error invalid format count " $0
-#                 exit
-#             }
-
-#             if ($1 ~ /[[:space:]]/) {
-#                 print "Error invalid format whitespace " $0
-#                 exit
-#             }
-
-#             if ($2 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-#                 print "Error invalid format date " $0
-#                 exit
-#             }
-
-#             if ($3 !~ /^[A-Z]{3}$/) {
-#                 print "Error invalid format currency " $0
-#                 exit
-#             }
-
-#             if ($4 !~ /^(-?[0-9]+(\.[0-9]{1,4})?)$/) {
-#                 print "Error invalid format amount " $0
-#                 exit
-#             }
-#         }
-#     ' "$logfile"
-# }
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -108,15 +68,15 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -a)
-            DATE_AFTER+="$2"
+            DATE_AFTER="$2"
             shift
             ;;
         -b)
-            DATE_BEFORE+="$2"
+            DATE_BEFORE="$2"
             shift
             ;;
         -c)
-            CURRENCY+=("$2")
+            CURRENCY="$2"
             shift
             ;;
         list|list-currency|status|profit)
@@ -143,16 +103,16 @@ if [ -z "$COMMAND" ] && [ -n "$USER" ] && [ ${#LOGS[@]} -gt 0 ]; then
 fi
 
 if [ -z "$COMMAND" ] || [ -z "$USER" ] || [ ${#LOGS[@]} -eq 0 ]; then
-    echo "Error: Missing required arguments"
-    help
+    # echo "Error: Missing required arguments"
+    # help
     exit 1
 fi
 
 for log in "${LOGS[@]}"; do
     if [[ "$log" == *.gz ]]; then
-        gzip -d -c "$log" | validate_logs
+        gzip -d -c "$log" | validate_logs || exit $?
     else
-        validate_logs "$log"
+        validate_logs "$log" || exit $?
     fi
 done
 
@@ -170,9 +130,13 @@ done
 if [ "$COMMAND" = "list" ]; then
     for log in "${LOGS[@]}"; do
         if [[ "$log" == *.gz ]]; then
-            gzip -d -c "$log" | awk -F ';' -v user="$USER" -v currency="$CURRENCY" '$1 == user && (currency == "" || $3 == currency)'
+            gzip -d -c "$log" | awk -F ';' -v user="$USER" -v currency="$CURRENCY" '
+                $1 == user && (currency == "" || $3 == currency)
+            '
         else
-            awk -F ';' -v user="$USER" -v currency="$CURRENCY" '$1 == user && (currency == "" || $3 == currency)' "$log"
+            awk -F ';' -v user="$USER" -v currency="$CURRENCY" '
+                $1 == user && (currency == "" || $3 == currency)
+            ' "$log"
         fi
     done
 fi
@@ -186,3 +150,27 @@ if [ "$COMMAND" = "list-currency" ]; then
         fi
     done
 fi
+
+if [ "$COMMAND" = "status" ]; then
+    for log in "${LOGS[@]}"; do
+        if [[ "$log" == *.gz ]]; then
+            gzip -d -c "$log" | awk -F ';' -v user="$USER" -v date_after="$DATE_AFTER" -v date_before="$DATE_BEFORE" '
+                $1 == user && ($2 >= date_after || date_after == "") && ($2 < date_before || date_before == "") { balance[$3] += $4 }
+                END {
+                    for (currency in balance) {
+                        printf "%s : %.4f\n", currency, balance[currency]
+                    }
+                }
+            '
+        else
+            awk -F ';' -v user="$USER" -v date_after="$DATE_AFTER" -v date_before="$DATE_BEFORE" '
+                $1 == user && ($2 >= date_after || date_after == "") && ($2 < date_before || date_before == "") { balance[$3] += $4 }
+                END {
+                    for (currency in balance) {
+                        printf "%s : %.4f\n", currency, balance[currency]
+                    }
+                }
+            ' "$log"
+        fi
+    done
+fi | sort -t ':' -k 1
