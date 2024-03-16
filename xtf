@@ -29,34 +29,76 @@ help(){
 validate_logs() {
     local logfile="$1"
     awk -F ';' '
+        BEGIN {
+            RS = "\n"   # Set record separator to newline
+        }
         {
-            if (NF != 4) {
-                print "Error invalid format count"
+            # Check the number of fields in each record
+            if (NF % 4 != 0) {
+                print "Error invalid format count: " $0
                 exit
             }
 
-            if ($1 ~ /[[:space:]]/) {
-                print "Error invalid format whitespace " $0
-                exit
-            }
+            # Loop through each record and validate its fields
+            for (i = 1; i <= NF; i += 4) {
+                # Validate USER NAME
+                if (!($i ~ /^[[:print:]]+$/)) {
+                    print "Error invalid format whitespace: " $0
+                    exit
+                }
 
-            if ($2 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                print "Error invalid format date " $0
-                exit
-            }
+                # Validate DATE AND TIME
+                if ($(i + 1) !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
+                    print "Error invalid format date: " $0
+                    exit
+                }
 
-            if ($3 !~ /^[A-Z]{3}$/) {
-                print "Error invalid format currency " $0
-                exit
-            }
+                # Validate CURRENCY
+                if ($(i + 2) !~ /^[A-Z]{3}$/) {
+                    print "Error invalid format currency: " $0
+                    exit
+                }
 
-            if ($4 !~ /^(-?[0-9]+(\.[0-9]{1,4})?)$/) {
-                print "Error invalid format amount " $0
-                exit
+                # Validate VALUE
+                if ($(i + 3) !~ /^(-?[0-9]+(\.[0-9]{1,4})?)$/) {
+                    print "Error invalid format amount: " $0
+                    exit
+                }
             }
         }
     ' "$logfile"
 }
+# validate_logs() {
+#     local logfile="$1"
+#     awk -F ';' '
+#         {
+#             if (NF != 4) {
+#                 print "Error invalid format count " $0
+#                 exit
+#             }
+
+#             if ($1 ~ /[[:space:]]/) {
+#                 print "Error invalid format whitespace " $0
+#                 exit
+#             }
+
+#             if ($2 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
+#                 print "Error invalid format date " $0
+#                 exit
+#             }
+
+#             if ($3 !~ /^[A-Z]{3}$/) {
+#                 print "Error invalid format currency " $0
+#                 exit
+#             }
+
+#             if ($4 !~ /^(-?[0-9]+(\.[0-9]{1,4})?)$/) {
+#                 print "Error invalid format amount " $0
+#                 exit
+#             }
+#         }
+#     ' "$logfile"
+# }
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -113,13 +155,13 @@ for log in "${LOGS[@]}"; do
     fi
 done
 
-echo "Command: $COMMAND"
-echo "Filter: $FILTER"
-echo "User: $USER"
-echo "Logs:"
-for log in "${LOGS[@]}"; do
-    echo "$log"
-done
+# echo "Command: $COMMAND"
+# echo "Filter: $FILTER"
+# echo "User: $USER"
+# echo "Logs:"
+# for log in "${LOGS[@]}"; do
+#     echo "$log"
+# done
 
 if [ "$COMMAND" = "list" ]; then
     for log in "${LOGS[@]}"; do
