@@ -30,34 +30,33 @@ help(){
 }
 # Fucion to validate the logs
 validate_logs() {
-    local logfile="$1" # Store the first argument in the variable logfile
     awk -F ';' '
         {
             # Iterate over the fields of the input line
             for (i = 1; i <= NF; i += 4) {
-                # Validate user name
+                # Validate username format ( only printable characters without spaces )
                 if (!($i ~ /^[[:print:]]+$/)) {
-                    print "Error: Invalid format for user name" $0 > "/dev/stderr"
+                    print "Error: Invalid format for user name" > "/dev/stderr"
                     exit 1 
                 }
-                # Validate date
+                # Validate date format ( YYYY-MM-DD HH:MM:SS )
                 if ($(i + 1) !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                    print "Error: Invalid format for date" $0 > "/dev/stderr"
+                    print "Error: Invalid format for date" > "/dev/stderr"
                     exit 1 
                 }
-                # Validate currency
+                # Validate currency format ( 3 uppercase letters )
                 if ($(i + 2) !~ /^[A-Z]{3}$/) {
-                    print "Error: Invalid format for currency" $0 > "/dev/stderr"
+                    print "Error: Invalid format for currency" > "/dev/stderr"
                     exit 1 
                 }
-                # Validate amount
+                # Validate amount format ( number with 4 decimal places )
                 if ($(i + 3) !~ /^(-?[0-9]+(\.[0-9]{4})?)$/) {
-                    print "Error: Invalid format for amount" $0 > "/dev/stderr"
+                    print "Error: Invalid format for amount" > "/dev/stderr"
                     exit 1 
                 }
             }
         }
-    ' "$logfile"
+    ' "$1"
 }
 
 # Process the command line arguments and options using a while loop
@@ -85,6 +84,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c) # If the argument is -c, store the second argument in the variable CURRENCY
             CURRENCY="$2"
+            if [[ ! "$CURRENCY" =~ ^[A-Z]{3}$ ]]; then # If the currency is not in the correct format, print an error message and exit
+                echo "Error: Invalid format for currency" >&2
+                exit 1
+            fi
             shift
             ;;
         list|list-currency|status|profit) # If the argument is one of the commands, store it in the variable COMMAND
@@ -119,31 +122,31 @@ if [ -z "$USER" ] || [ ${#LOGS[@]} -eq 0 ]; then
     echo "Error: Missing required arguments" >&2
     exit 1
 fi
-
+# Loop through the logs and validate them
 for log in "${LOGS[@]}"; do
-    if [[ "$log" == *.gz ]]; then
-        gzip -d -c "$log" | validate_logs || exit $?
+    if [[ "$log" == *.gz ]]; then # If the log file is gzipped, use gzip to decompress it and pass the output to the validate_logs function
+        gzip -d -c "$log" | validate_logs || exit $1 # If the funcion validate_logs returns an error, exit the script
     else
-        validate_logs "$log" || exit $?
+        validate_logs "$log" || exit $1 # If the funcion validate_logs returns an error, exit the script
     fi
 done
 
+# If the command is list, print all the records for the user and currency
 if [ "$COMMAND" = "list" ]; then
-    for log in "${LOGS[@]}"; do
+    for log in "${LOGS[@]}"; do # Loop through the logs
         if [[ "$log" == *.gz ]]; then
-            gzip -d -c "$log" | awk -F ';' -v user="$USER" -v currency="$CURRENCY" '
-                $1 == user && (currency == "" || $3 == currency)
-            '
+            # If the log file is gzipped, use gzip to decompress it and pass the output to awk
+            gzip -d -c "$log" | awk -F ';' -v user="$USER" -v currency="$CURRENCY" '$1 == user && (currency == "" || $3 == currency)'
         else
-            awk -F ';' -v user="$USER" -v currency="$CURRENCY" '
-                $1 == user && (currency == "" || $3 == currency)
-            ' "$log"
+            # If the log file is not gzipped, pass it to awk
+            awk -F ';' -v user="$USER" -v currency="$CURRENCY" '$1 == user && (currency == "" || $3 == currency)' "$log"
         fi
     done
 fi
 
+# If the command is list-currency, print all the unique currencies for the user
 if [ "$COMMAND" = "list-currency" ]; then
-    for log in "${LOGS[@]}"; do
+    for log in "${LOGS[@]}"; do # Loop through the logs
         if [[ "$log" == *.gz ]]; then
             gzip -d -c "$log" | awk -F ';' -v user="$USER" '$1 == user {print $3}' | sort -u
         else
@@ -152,31 +155,42 @@ if [ "$COMMAND" = "list-currency" ]; then
     done
 fi
 
+# If the command is status, print the balance for each currency depending on the date and user
 if [ "$COMMAND" = "status" ]; then
     for log in "${LOGS[@]}"; do
         if [[ "$log" == *.gz ]]; then
             gzip -d -c "$log" | awk -F ';' -v user="$USER" -v date_after="$DATE_AFTER" -v date_before="$DATE_BEFORE" '
-                $1 == user && ($2 >= date_after || date_after == "") && ($2 < date_before || date_before == "") { balance[$3] += $4 }
-                END {
-                    for (currency in balance) {
-                        printf "%s : %.4f\n", currency, balance[currency]
+                # If the dates match add the amount to the total for the specified currency
+                $1 == user && ($2 >= date_after || date_after == "") && ($2 < date_before || date_before == "") {
+                    currencies[$3] += $4
+                }
+                END { 
+                    for (currency in currencies) {
+                        # Print the currency and the currencies amount
+                        printf "%s : %.4f\n", currency, currencies[currency]
                     }
                 }
             '
         else
             awk -F ';' -v user="$USER" -v date_after="$DATE_AFTER" -v date_before="$DATE_BEFORE" '
-                $1 == user && ($2 >= date_after || date_after == "") && ($2 < date_before || date_before == "") { balance[$3] += $4 }
+                # If the dates match add the amount to the total for the specified currency
+                $1 == user && ($2 >= date_after || date_after == "") && ($2 < date_before || date_before == "") {
+                    currencies[$3] += $4
+                }
                 END {
-                    for (currency in balance) {
-                        printf "%s : %.4f\n", currency, balance[currency]
+                    for (currency in currencies) {
+                        # Print the currency and the currencies amount
+                        printf "%s : %.4f\n", currency, currencies[currency]
                     }
                 }
             ' "$log"
         fi
     done
-fi | sort -t ':' -k 1
+fi | sort -t ':' -k 1 # Sort the output by currency
 
+# If the command is profit, print the balance for each currency with the profit percentage
 if [ "$COMMAND" = "profit" ]; then
+    # If the profit is not set, set it to 20%
     if [ -z "$XTF_PROFIT" ]; then
         PROFIT_PERCENTAGE=20
     else
@@ -186,25 +200,34 @@ if [ "$COMMAND" = "profit" ]; then
     for log in "${LOGS[@]}"; do
         if [[ "$log" == *.gz ]]; then
             gzip -d -c "$log" | awk -F ';' -v user="$USER" -v profit="$PROFIT_PERCENTAGE" '
-                BEGIN { PROCINFO["sorted_in"] = "@ind_str_asc" }
+                # If the user matches, add the amount to the total depending on the value of the profit
                 $1 == user { 
                     if ($4 > 0) {
-                        $4 *= (1 + profit / 100)
+                        $4 = $4 * (1 + profit / 100)
                     }
-                    balance[$3] += $4
+                    currencies[$3] += $4
                 }
-                END { for (currency in balance) printf "%s : %.4f\n", currency, balance[currency] }
+                END {
+                # Print the currency and the currencies amount
+                for (currency in currencies)
+                    printf "%s : %.4f\n", currency, currencies[currency]
+                }
             '
         else
             awk -F ';' -v user="$USER" -v profit="$PROFIT_PERCENTAGE" '
                 $1 == user { 
+                    # If the user matches, add the amount to the total depending on the value of the profit
                     if ($4 > 0) {
-                        $4 *= (1 + profit / 100)
+                        $4 = $4 * (1 + profit / 100)
                     }
-                    balance[$3] += $4
+                    currencies[$3] += $4
                 }
-                END { for (currency in balance) printf "%s : %.4f\n", currency, balance[currency] }
+                END {
+                # Print the currency and the currencies amount
+                for (currency in currencies)
+                    printf "%s : %.4f\n", currency, currencies[currency]
+                }
             ' "$log"
         fi
-    done | sort -t ':' -k 1
+    done | sort -t ':' -k 1 # Sort the output by currency
 fi
