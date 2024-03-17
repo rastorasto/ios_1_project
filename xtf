@@ -11,6 +11,7 @@ COMMAND=""
 USER=""
 LOGS=()
 
+# Prints help information about the script and usage
 help(){
     echo "xtf - skript pro předzpracování logů z Vaší kryptoměnové burzy."
     echo "POUŽITÍ"
@@ -27,33 +28,30 @@ help(){
     echo "-c CURRENCY – jsou uvažovány pouze záznamy odpovídající dané měně."
     echo "-h a --help vypíšou nápovědu s krátkým popisem každého příkazu a přepínače."
 }
+
 validate_logs() {
     local logfile="$1"
     awk -F ';' '
-        BEGIN {
-            RS = "\n"
-        }
         {
-            if (NF % 4 != 0) {
-                #print "Error invalid format count: " $0
-                exit 1 
-            }
             for (i = 1; i <= NF; i += 4) {
                 # Validate USER NAME
                 if (!($i ~ /^[[:print:]]+$/)) {
-                    #print "Error invalid format whitespace: " $0
+                    print "Error: Invalid format for user name" $0 > "/dev/stderr"
                     exit 1 
                 }
+                # Validate DATE
                 if ($(i + 1) !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                    #print "Error invalid format date: " $0
+                    print "Error: Invalid format for date" $0 > "/dev/stderr"
                     exit 1 
                 }
+                # Validate CURRENCY
                 if ($(i + 2) !~ /^[A-Z]{3}$/) {
-                    #print "Error invalid format currency: " $0
+                    print "Error: Invalid format for currency" $0 > "/dev/stderr"
                     exit 1 
                 }
-                if ($(i + 3) !~ /^(-?[0-9]+(\.[0-9]{1,4})?)$/) {
-                    #print "Error invalid format amount: " $0
+                # Validate AMOUNT
+                if ($(i + 3) !~ /^(-?[0-9]+(\.[0-9]{4})?)$/) {
+                    print "Error: Invalid format for amount" $0 > "/dev/stderr"
                     exit 1 
                 }
             }
@@ -126,17 +124,6 @@ for log in "${LOGS[@]}"; do
         validate_logs "$log" || exit $?
     fi
 done
-
-# echo "Command: $COMMAND"
-# echo "Filter: $FILTER"
-# echo "Currency: $CURRENCY"
-# echo "Date after: $DATE_AFTER"
-# echo "Date before: $DATE_BEFORE"
-# echo "User: $USER"
-# echo "Logs:"
-# for log in "${LOGS[@]}"; do 
-#     echo "$log"
-# done
 
 if [ "$COMMAND" = "list" ]; then
     for log in "${LOGS[@]}"; do
