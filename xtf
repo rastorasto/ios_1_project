@@ -125,9 +125,9 @@ fi
 # Loop through the logs and validate them
 for log in "${LOGS[@]}"; do
     if [[ "$log" == *.gz ]]; then # If the log file is gzipped, use gzip to decompress it and pass the output to the validate_logs function
-        gzip -d -c "$log" | validate_logs || exit $1 # If the funcion validate_logs returns an error, exit the script
+        gzip -d -c "$log" | validate_logs || exit "$1" # If the funcion validate_logs returns an error, exit the script
     else
-        validate_logs "$log" || exit $1 # If the funcion validate_logs returns an error, exit the script
+        validate_logs "$log" || exit "$1" # If the funcion validate_logs returns an error, exit the script
     fi
 done
 
