@@ -28,28 +28,29 @@ help(){
     echo "-c CURRENCY – jsou uvažovány pouze záznamy odpovídající dané měně."
     echo "-h a --help vypíšou nápovědu s krátkým popisem každého příkazu a přepínače."
 }
-
+# Fucion to validate the logs
 validate_logs() {
-    local logfile="$1"
+    local logfile="$1" # Store the first argument in the variable logfile
     awk -F ';' '
         {
+            # Iterate over the fields of the input line
             for (i = 1; i <= NF; i += 4) {
-                # Validate USER NAME
+                # Validate user name
                 if (!($i ~ /^[[:print:]]+$/)) {
                     print "Error: Invalid format for user name" $0 > "/dev/stderr"
                     exit 1 
                 }
-                # Validate DATE
+                # Validate date
                 if ($(i + 1) !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
                     print "Error: Invalid format for date" $0 > "/dev/stderr"
                     exit 1 
                 }
-                # Validate CURRENCY
+                # Validate currency
                 if ($(i + 2) !~ /^[A-Z]{3}$/) {
                     print "Error: Invalid format for currency" $0 > "/dev/stderr"
                     exit 1 
                 }
-                # Validate AMOUNT
+                # Validate amount
                 if ($(i + 3) !~ /^(-?[0-9]+(\.[0-9]{4})?)$/) {
                     print "Error: Invalid format for amount" $0 > "/dev/stderr"
                     exit 1 
@@ -59,45 +60,46 @@ validate_logs() {
     ' "$logfile"
 }
 
+# Process the command line arguments and options using a while loop
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -h|--help)
-            help
+        -h|--help) # If the argument is -h or --help, print the help message and exit
+            help 
             exit 0
             ;;
-        -a)
-            if [ -n "$DATE_AFTER" ]; then
-                echo "Error: Duplicate option -a" >&2
+        -a) # If the argument is -a, store the second argument in the variable DATE_AFTER
+            if [ -n "$DATE_AFTER" ]; then # If DATE_AFTER is not empty, print an error message and exit
+                echo "Error: Duplicate option -a" >&2 
                 exit 1
             fi
             DATE_AFTER="$2"
             shift
             ;;
-        -b)
-            if [ -n "$DATE_BEFORE" ]; then
+        -b) # If the argument is -b, store the second argument in the variable DATE_BEFORE
+            if [ -n "$DATE_BEFORE" ]; then # If DATE_BEFORE is not empty, print an error message and exit
                 echo "Error: Duplicate option -b" >&2
                 exit 1
             fi
             DATE_BEFORE="$2"
             shift
             ;;
-        -c)
+        -c) # If the argument is -c, store the second argument in the variable CURRENCY
             CURRENCY="$2"
             shift
             ;;
-        list|list-currency|status|profit)
-            if [ -n "$COMMAND" ]; then
+        list|list-currency|status|profit) # If the argument is one of the commands, store it in the variable COMMAND
+            if [ -n "$COMMAND" ]; then # If COMMAND is not empty, print an error message and exit
                 echo "Error: Duplicate command" >&2
                 exit 1
             fi
             COMMAND=$1
             ;;
-        -*)
+        -*) # If the argument is an unknown option, print an error message and exit
             echo "Error: Unknown option $1"
             help
             exit 1
             ;;
-        *)
+        *) # If the argument is not an option, store it in the variable USER if it is empty, otherwise store it in the array LOGS
             if [ -z "$USER" ]; then
                 USER=$1
             else
@@ -108,11 +110,12 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-if [ -z "$COMMAND" ] && [ -n "$USER" ] && [ ${#LOGS[@]} -gt 0 ]; then
+# If the command is empty, set the command to list
+if [ -z "$COMMAND" ] && [ -n "$USER" ] && [ ${#LOGS[@]} -gt 0 ]; then 
     COMMAND="list"
 fi
-
-if [ -z "$COMMAND" ] || [ -z "$USER" ] || [ ${#LOGS[@]} -eq 0 ]; then
+# If missing user or logs, print an error message and exit
+if [ -z "$USER" ] || [ ${#LOGS[@]} -eq 0 ]; then
     echo "Error: Missing required arguments" >&2
     exit 1
 fi
